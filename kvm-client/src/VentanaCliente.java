@@ -1,186 +1,110 @@
+import com.github.kwhat.jnativehook.GlobalScreen;
+import com.github.kwhat.jnativehook.mouse.NativeMouseEvent;
+import com.github.kwhat.jnativehook.mouse.NativeMouseInputListener;
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.io.PrintWriter;
 import java.net.Socket;
 
-public class VentanaCliente extends JFrame { // Corregido JWindows por JFrame
+public class VentanaCliente extends JFrame implements NativeMouseInputListener {
+    private static JTextField txtIp;
+    private static JButton btnConectar;
+    private static JLabel lblEstado;
     
-    private JTextField campoIP;
-    private JButton botonConectar;
-    private JLabel etiquetaEstado;
-    
-    // Variables de red y control
-    private Socket socket;
-    private PrintWriter salida;
-    private boolean enEjecucion = false;
-    private Thread hiloKVM;
-    
-    // Nueva ventana para la barra invisible del borde
-    private JWindow barraInvisible; 
+    private static Socket socket;
+    private static PrintWriter salida;
+    private static boolean controlandoWindows = false;
+    private static int anchoPantalla = 1366;
 
     public VentanaCliente() {
-        setTitle("KVM Controller");
-        setSize(350, 200);
+        setTitle("KVM Coordenadas - Arch Linux");
+        setSize(300, 150);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null); 
-        setLayout(new GridLayout(4, 1, 10, 10)); 
+        setLayout(new FlowLayout());
 
-        JLabel titulo = new JLabel("🚀 KVM NETWORK SHARE", SwingConstants.CENTER);
-        titulo.setFont(new Font("Arial", Font.BOLD, 16));
-        add(titulo);
+        txtIp = new JTextField("192.168.1.102", 12);
+        btnConectar = new JButton("Iniciar Control");
+        lblEstado = new JLabel("Estado: Desconectado 🔴");
 
-        JPanel panelIP = new JPanel();
-        panelIP.add(new JLabel("IP del Receptor:"));
-        campoIP = new JTextField("192.168.1.102", 15); // Cambiada a tu IP de Windows .104 por defecto
-        panelIP.add(campoIP);
-        add(panelIP);
+        add(new JLabel("IP Servidor:"));
+        add(txtIp);
+        add(btnConectar);
+        add(lblEstado);
 
-        botonConectar = new JButton("Iniciar Control");
-        add(botonConectar);
-
-        etiquetaEstado = new JLabel("Estado: Desconectado 🔴", SwingConstants.CENTER);
-        add(etiquetaEstado);
-
-        botonConectar.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (!enEjecucion) {
-                    iniciarKVM(campoIP.getText());
-                } else {
-                    detenerKVM();
-                }
-            }
-        });
+        btnConectar.addActionListener(e -> alternarConexion());
     }
 
-    private void iniciarKVM(String ip) {
-        enEjecucion = true;
-        etiquetaEstado.setText("Conectando... 🟡");
-        botonConectar.setText("Detener");
-
-        hiloKVM = new Thread(() -> {
+    private void alternarConexion() {
+        if (!controlandoWindows && socket == null) {
             try {
-                int puerto = 8080;
-                socket = new Socket(ip, puerto);
+                socket = new Socket(txtIp.getText(), 8585);
                 salida = new PrintWriter(socket.getOutputStream(), true);
-                
-                SwingUtilities.invokeLater(() -> {
-                    etiquetaEstado.setText("¡Conectado y transmitiendo! 🟢");
-                    crearBarraInvisible(); // Activamos el portal en el borde de la pantalla
-                });
-                
-                Dimension tamañoPantalla = Toolkit.getDefaultToolkit().getScreenSize();
-                int anchoMax = (int) tamañoPantalla.getWidth();
-                int altoMax = (int) tamañoPantalla.getHeight();
-
-                double pctX = 0.5;
-                double pctY = 0.5;
-                int ultimoX = anchoMax / 2;
-                int ultimoY = altoMax / 2;
-
-                Robot robotLocal = new Robot(); 
-                boolean controlandoWindows = false;
-
-                while (enEjecucion) {
-                    Point puntoMouse = MouseInfo.getPointerInfo().getLocation();
-                    int xActual = puntoMouse.x;
-                    int yActual = puntoMouse.y;
-
-                    // DETECCIÓN: Si toca el borde derecho, saltamos a Windows
-                    if (!controlandoWindows && xActual >= (anchoMax - 2)) {
-                        controlandoWindows = true;
-                        ultimoX = anchoMax / 2; // Lo centramos virtualmente en la laptop
-                        ultimoY = yActual;
-                        robotLocal.mouseMove(ultimoX, ultimoY);
-                        continue;
-                    }
-
-
-                    if (controlandoWindows) {
-                        // ESCAPE: Si tiras el mouse bruscamente a la izquierda, regresas a Arch
-                        if (xActual < (anchoMax / 2 - 150)) {
-                            controlandoWindows = false;
-                            salida.println("LIBERAR"); // Avisa al servidor que libere el mouse
-                            Thread.sleep(100);
-                            continue;
-                        }
-
-                        // Calculamos cuántos píxeles reales se movió tu mano en la laptop
-                        int deltaX = xActual - ultimoX;
-                        int deltaY = yActual - ultimoY;
-
-                        if (deltaX != 0 || deltaY != 0) {
-                            // Puedes cambiar esta sensibilidad (ej. 1.2 para más rápido, 0.8 para más lento)
-                            double sensibilidad = 1.0; 
-                            
-                            int envioX = (int) (deltaX * sensibilidad);
-                            int envioY = (int) (deltaY * sensibilidad);
-
-                            // Enviamos los píxeles puros de movimiento directo
-                            salida.println("P," + envioX + "," + envioY);
-                        }
-
-                        // Regresamos el mouse al centro virtual de la laptop para tener recorrido infinito
-                        ultimoX = anchoMax / 2;
-                        ultimoY = altoMax / 2; 
-                        robotLocal.mouseMove(ultimoX, ultimoY);
-                    }
-
-                    // REEMPLAZA ESE FINAL CON ESTO:
-                    Thread.sleep(10); // Sincronización limpia a 100Hz
-                }
-
+                lblEstado.setText("Estado: ¡Controlando Windows! 🟢");
+                btnConectar.setText("Detener");
+                controlandoWindows = true;
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> {
-                    etiquetaEstado.setText("Error de conexión 🔴");
-                    detenerKVM();
-                });
+                lblEstado.setText("Error de conexión 🔴");
             }
-        });
-
-        hiloKVM.start(); 
-    }
-
-    // Crea el hilo invisible en el extremo derecho de tu monitor
-    private void crearBarraInvisible() {
-        Dimension tamaño = Toolkit.getDefaultToolkit().getScreenSize();
-        barraInvisible = new JWindow();
-        barraInvisible.setSize(2, (int) tamaño.getHeight());
-        barraInvisible.setLocation((int) tamaño.getWidth() - 2, 0);
-        barraInvisible.setAlwaysOnTop(true);
-        
-        // Hacerlo completamente transparente
-        barraInvisible.setBackground(new Color(0, 0, 0, 1)); 
-        barraInvisible.setVisible(true);
-    }
-
-    private void detenerKVM() {
-        enEjecucion = false;
-        botonConectar.setText("Iniciar Control");
-        etiquetaEstado.setText("Estado: Desconectado 🔴");
-        
-        if (barraInvisible != null) {
-            barraInvisible.dispose();
+        } else {
+            cerrarConexion();
         }
-        
+    }
+
+    private void cerrarConexion() {
+        controlandoWindows = false;
         try {
-            if (salida != null) salida.close();
+            if (salida != null) salida.println("LIBERAR");
             if (socket != null) socket.close();
-            if (hiloKVM != null) hiloKVM.interrupt();
-        } catch (Exception ex) {
-            // Ignorar al cerrar
-        }
+        } catch (Exception e) {}
+        socket = null;
+        salida = null;
+        lblEstado.setText("Estado: Desconectado 🔴");
+        btnConectar.setText("Iniciar Control");
     }
 
     public static void main(String[] args) {
         try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception e) { e.printStackTrace(); }
-
-        SwingUtilities.invokeLater(() -> {
-            new VentanaCliente().setVisible(true);
-        });
+            GlobalScreen.registerNativeHook();
+            VentanaCliente cliente = new VentanaCliente();
+            GlobalScreen.addNativeMouseListener(cliente);
+            GlobalScreen.addNativeMouseMotionListener(cliente);
+            SwingUtilities.invokeLater(() -> cliente.setVisible(true));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
+
+    // --- ENVIAR COORDENADAS ABSOLUTAS ---
+    @Override
+    public void nativeMouseMoved(NativeMouseEvent e) {
+        if (!controlandoWindows || salida == null) return;
+
+        // ESCAPE: Si llevas el mouse al borde IZQUIERDO absoluto (píxel 0), recuperas el control en Arch
+        if (e.getX() <= 2) {
+            cerrarConexion();
+            return;
+        }
+
+        // Enviamos la posición "A,X,Y" directa a Windows sin modificarla
+        salida.println("A," + e.getX() + "," + e.getY());
+    }
+
+    @Override
+    public void nativeMousePressed(NativeMouseEvent e) {
+        if (controlandoWindows && salida != null) {
+            if (e.getButton() == NativeMouseEvent.BUTTON1) salida.println("C,PRESIONAR,1");
+            if (e.getButton() == NativeMouseEvent.BUTTON2) salida.println("C,PRESIONAR,3");
+        }
+    }
+
+    @Override
+    public void nativeMouseReleased(NativeMouseEvent e) {
+        if (controlandoWindows && salida != null) {
+            if (e.getButton() == NativeMouseEvent.BUTTON1) salida.println("C,LIBERAR,1");
+            if (e.getButton() == NativeMouseEvent.BUTTON2) salida.println("C,LIBERAR,3");
+        }
+    }
+
+    @Override public void nativeMouseClicked(NativeMouseEvent e) {}
+    @Override public void nativeMouseDragged(NativeMouseEvent e) {}
 }
