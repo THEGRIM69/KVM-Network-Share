@@ -102,31 +102,29 @@ public class VentanaCliente extends JFrame { // Corregido JWindows por JFrame
                         // ESCAPE: Si tiras el mouse bruscamente a la izquierda, regresas a Arch
                         if (xActual < (anchoMax / 2 - 150)) {
                             controlandoWindows = false;
-
+                            salida.println("LIBERAR"); // Avisa al servidor que libere el mouse
                             Thread.sleep(100);
                             continue;
                         }
 
-                        // Calculamos cuánto moviste el mouse físicamente
+                        // Calculamos cuántos píxeles reales se movió tu mano en la laptop
                         int deltaX = xActual - ultimoX;
                         int deltaY = yActual - ultimoY;
 
                         if (deltaX != 0 || deltaY != 0) {
-                            // Sumamos el movimiento al porcentaje de Windows
-                            pctX += (double) deltaX / (double) anchoMax;
-                            pctY += (double) deltaY / (double) altoMax;
+                            // Puedes cambiar esta sensibilidad (ej. 1.2 para más rápido, 0.8 para más lento)
+                            double sensibilidad = 1.0; 
+                            
+                            int envioX = (int) (deltaX * sensibilidad);
+                            int envioY = (int) (deltaY * sensibilidad);
 
-                            // Evitamos que el puntero se salga de los límites (0.0 a 1.0)
-                            if (pctX < 0) pctX = 0; if (pctX > 1) pctX = 1;
-                            if (pctY < 0) pctY = 0; if (pctY > 1) pctY = 1;
-
-                            // Enviamos la coordenada calculada a Windows
-                            salida.println("P," + pctX + "," + pctY);
+                            // Enviamos los píxeles puros de movimiento directo
+                            salida.println("P," + envioX + "," + envioY);
                         }
 
-                        // Devolvemos el mouse de la laptop al centro para que nunca se quede sin espacio
+                        // Regresamos el mouse al centro virtual de la laptop para tener recorrido infinito
                         ultimoX = anchoMax / 2;
-                        ultimoY = yActual;
+                        ultimoY = altoMax / 2; 
                         robotLocal.mouseMove(ultimoX, ultimoY);
                     }
 
