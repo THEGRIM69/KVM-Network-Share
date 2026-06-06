@@ -34,20 +34,35 @@ public class ServidorKVM {
             BufferedReader entrada = new BufferedReader(new InputStreamReader(cliente.getInputStream()));
             String comando;
 
-            // 3. PROGRAMACIÓN 2: Bucle que procesa los datos que llegan por la red
+            // 3. PROGRAMACIÓN 2: Bucle que procesa los datos optimizado para pantalla secundaria
             while ((comando = entrada.readLine()) != null) {
-                // Formato esperado: "P,porcentajeX,porcentajeY" (Ej: P,0.5,0.5 significa el centro)
+                
+                // Si el cliente pide liberar el control, reiniciamos el estado en el servidor
+                if (comando.equals("LIBERAR")) {
+                    System.out.println("Control devuelto a la PC Maestra temporalmente...");
+                    continue; 
+                }
+
+                // Formato esperado: "P,porcentajeX,porcentajeY"
                 if (comando.startsWith("P")) {
-                    String[] partes = comando.split(",");
-                    double porcX = Double.parseDouble(partes[1]);
-                    double porcY = Double.parseDouble(partes[2]);
+                    try {
+                        String[] partes = comando.split(",");
+                        double porcX = Double.parseDouble(partes[1]);
+                        double porcY = Double.parseDouble(partes[2]);
 
-                    // Convertimos el porcentaje a los píxeles reales de ESTA pantalla
-                    int xFinal = (int) (porcX * anchoLocal);
-                    int yFinal = (int) (porcY * altoLocal);
+                        // Control de seguridad: Evitar que el mouse se salga de los límites lógicos
+                        if (porcX < 0) porcX = 0; if (porcX > 1) porcX = 1;
+                        if (porcY < 0) porcY = 0; if (porcY > 1) porcY = 1;
 
-                    // El Robot ejecuta el movimiento en el sistema operativo
-                    robot.mouseMove(xFinal, yFinal);
+                        // Convertimos el porcentaje a los píxeles reales de Windows
+                        int xFinal = (int) (porcX * anchoLocal);
+                        int yFinal = (int) (porcY * altoLocal);
+
+                        // El Robot ejecuta el movimiento de forma inmediata y directa
+                        robot.mouseMove(xFinal, yFinal);
+                    } catch (Exception ex) {
+                        // Si un paquete de red llega corrupto, lo ignora y pasa al siguiente sin tumbar el programa
+                    }
                 }
             }
 

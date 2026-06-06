@@ -33,7 +33,7 @@ public class VentanaCliente extends JFrame { // Corregido JWindows por JFrame
 
         JPanel panelIP = new JPanel();
         panelIP.add(new JLabel("IP del Receptor:"));
-        campoIP = new JTextField("192.168.1.104", 15); // Cambiada a tu IP de Windows .104 por defecto
+        campoIP = new JTextField("192.168.1.102", 15); // Cambiada a tu IP de Windows .104 por defecto
         panelIP.add(campoIP);
         add(panelIP);
 
@@ -70,60 +70,68 @@ public class VentanaCliente extends JFrame { // Corregido JWindows por JFrame
                     etiquetaEstado.setText("¡Conectado y transmitiendo! 🟢");
                     crearBarraInvisible(); // Activamos el portal en el borde de la pantalla
                 });
-
+                
                 Dimension tamañoPantalla = Toolkit.getDefaultToolkit().getScreenSize();
                 int anchoMax = (int) tamañoPantalla.getWidth();
                 int altoMax = (int) tamañoPantalla.getHeight();
-                
-                // Robot local para manipular el mouse de la laptop cuando cruce el borde
+
+                double pctX = 0.5;
+                double pctY = 0.5;
+                int ultimoX = anchoMax / 2;
+                int ultimoY = altoMax / 2;
+
                 Robot robotLocal = new Robot(); 
                 boolean controlandoWindows = false;
-                int ultimoX = 0, ultimoY = 0;
 
                 while (enEjecucion) {
                     Point puntoMouse = MouseInfo.getPointerInfo().getLocation();
                     int xActual = puntoMouse.x;
                     int yActual = puntoMouse.y;
 
-                    // DETECCIÓN: Si el mouse toca el extremo derecho de Arch Linux
+                    // DETECCIÓN: Si toca el borde derecho, saltamos a Windows
                     if (!controlandoWindows && xActual >= (anchoMax - 2)) {
                         controlandoWindows = true;
-                        // Centramos el mouse en el portal invisible para tener espacio de movimiento
-                        ultimoX = anchoMax - 5;
+                        ultimoX = anchoMax / 2; // Lo centramos virtualmente en la laptop
                         ultimoY = yActual;
                         robotLocal.mouseMove(ultimoX, ultimoY);
                         continue;
                     }
 
-                    // MODO TRANSMISIÓN: Si el portal está activo
+
                     if (controlandoWindows) {
-                        // Si el usuario mueve el mouse bruscamente a la izquierda, rompe el ciclo y regresa a Arch
-                        if (xActual < (anchoMax - 30)) {
+                        // ESCAPE: Si tiras el mouse bruscamente a la izquierda, regresas a Arch
+                        if (xActual < (anchoMax / 2 - 150)) {
                             controlandoWindows = false;
-                            salida.println("LIBERAR"); // Comando opcional por si quieres programar una liberación en tu servidor
+
                             Thread.sleep(100);
                             continue;
                         }
 
-                        // Calcular el desplazamiento relativo (Delta)
+                        // Calculamos cuánto moviste el mouse físicamente
                         int deltaX = xActual - ultimoX;
                         int deltaY = yActual - ultimoY;
 
                         if (deltaX != 0 || deltaY != 0) {
-                            // Enviamos posiciones proporcionales precisas mapeando la pantalla (Casteo double corregido)
-                            double porcentajeX = (double) xActual / (double) anchoMax;
-                            double porcentajeY = (double) yActual / (double) altoMax;
-                            
-                            salida.println("P," + porcentajeX + "," + porcentajeY);
+                            // Sumamos el movimiento al porcentaje de Windows
+                            pctX += (double) deltaX / (double) anchoMax;
+                            pctY += (double) deltaY / (double) altoMax;
+
+                            // Evitamos que el puntero se salga de los límites (0.0 a 1.0)
+                            if (pctX < 0) pctX = 0; if (pctX > 1) pctX = 1;
+                            if (pctY < 0) pctY = 0; if (pctY > 1) pctY = 1;
+
+                            // Enviamos la coordenada calculada a Windows
+                            salida.println("P," + pctX + "," + pctY);
                         }
 
-                        // Mantenemos el mouse de la laptop "enganchado" en la zona del borde para que no se escape de la pantalla
-                        ultimoX = anchoMax - 5;
+                        // Devolvemos el mouse de la laptop al centro para que nunca se quede sin espacio
+                        ultimoX = anchoMax / 2;
                         ultimoY = yActual;
                         robotLocal.mouseMove(ultimoX, ultimoY);
                     }
 
-                    Thread.sleep(12); // Optimizado a ~80Hz para suavidad extrema sin saturar la red Wi-Fi
+                    // REEMPLAZA ESE FINAL CON ESTO:
+                    Thread.sleep(10); // Sincronización limpia a 100Hz
                 }
 
             } catch (Exception ex) {
