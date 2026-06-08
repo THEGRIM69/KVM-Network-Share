@@ -16,3 +16,7 @@
 
 !kvm-client/lib/*.jar
 !kvm-client/lib/*.so
+
+# Ignorar los compilados de Java
+**/out/
+**/*.class

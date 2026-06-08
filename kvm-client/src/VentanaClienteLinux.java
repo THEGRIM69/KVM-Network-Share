@@ -15,7 +15,7 @@ import java.nio.ByteOrder;
  *   K,LIBERAR,keycode
  *   LIBERAR       → soltar control
  */
-public class VentanaCliente extends JFrame {
+public class VentanaClienteLinux extends JFrame {
 
     // ── Config ────────────────────────────────────────────────────
     private static final String DEVICE_MOUSE   = "/dev/input/event10";
@@ -38,7 +38,7 @@ public class VentanaCliente extends JFrame {
     private JButton    btnConectar;
     private JLabel     lblEstado;
 
-    public VentanaCliente() {
+    public VentanaClienteLinux() {
         setTitle("KVM Cliente - Arch Linux");
         setSize(420, 120);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -168,7 +168,7 @@ public class VentanaCliente extends JFrame {
     // ── Main ─────────────────────────────────────────────────────
 
     public static void main(String[] args) {
-        VentanaCliente cliente = new VentanaCliente();
+        VentanaClienteLinux cliente = new VentanaClienteLinux();
         cliente.iniciarLecturaDispositivo(DEVICE_MOUSE);
         SwingUtilities.invokeLater(() -> cliente.setVisible(true));
     }
