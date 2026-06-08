@@ -1,28 +1,46 @@
-import com.github.kwhat.jnativehook.GlobalScreen;
-import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent;
-import com.github.kwhat.jnativehook.keyboard.NativeKeyListener;
-import com.github.kwhat.jnativehook.mouse.NativeMouseEvent;
-import com.github.kwhat.jnativehook.mouse.NativeMouseInputListener;
-
 import javax.swing.*;
 import java.awt.*;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
-public class VentanaCliente extends JFrame
-        implements NativeMouseInputListener, NativeKeyListener {
+/**
+ * Cliente KVM — Lee /dev/input/eventX directo (funciona en Wayland).
+ * Protocolo con el servidor:
+ *   A,X,Y        → mover mouse (absoluto)
+ *   C,PRESIONAR,boton
+ *   C,LIBERAR,boton
+ *   K,PRESIONAR,keycode
+ *   K,LIBERAR,keycode
+ *   LIBERAR       → soltar control
+ */
+public class VentanaCliente extends JFrame {
 
+    // ── Config ────────────────────────────────────────────────────
+    private static final String DEVICE_MOUSE   = "/dev/input/event10";
+    private static final int    PUERTO         = 8080;
+    private static final int    ANCHO_PANTALLA = 1366;
+    private static final int    ALTO_PANTALLA  = 768;
+    private static final int    BORDE_DERECHO  = ANCHO_PANTALLA - 2;
+
+    // ── Estado ────────────────────────────────────────────────────
+    private Socket      socket;
+    private PrintWriter salida;
+    private volatile boolean controlando = false;
+
+    // Posición acumulada del mouse
+    private volatile int mouseX = ANCHO_PANTALLA / 2;
+    private volatile int mouseY = ALTO_PANTALLA  / 2;
+
+    // ── UI ───────────────────────────────────────────────────────
     private JTextField txtIp;
     private JButton    btnConectar;
     private JLabel     lblEstado;
 
-    private Socket      socket;
-    private PrintWriter salida;
-    private boolean     controlando = false;
-
     public VentanaCliente() {
         setTitle("KVM Cliente - Arch Linux");
-        setSize(320, 160);
+        setSize(420, 120);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
         setResizable(false);
@@ -44,8 +62,8 @@ public class VentanaCliente extends JFrame
     private void alternarConexion() {
         if (!controlando) {
             try {
-                socket    = new Socket(txtIp.getText().trim(), 8080);
-                salida    = new PrintWriter(socket.getOutputStream(), true);
+                socket      = new Socket(txtIp.getText().trim(), PUERTO);
+                salida      = new PrintWriter(socket.getOutputStream(), true);
                 controlando = true;
                 lblEstado.setText("Estado: Controlando 🟢");
                 btnConectar.setText("Detener");
@@ -57,106 +75,101 @@ public class VentanaCliente extends JFrame
         }
     }
 
-    private void cerrarConexion() {
+    void cerrarConexion() {
         controlando = false;
+        SwingUtilities.invokeLater(() -> {
+            lblEstado.setText("Estado: Desconectado 🔴");
+            btnConectar.setText("Iniciar Control");
+        });
         try {
             if (salida != null) salida.println("LIBERAR");
             if (socket != null) socket.close();
         } catch (Exception ignored) {}
-        socket  = null;
-        salida  = null;
-        lblEstado.setText("Estado: Desconectado 🔴");
-        btnConectar.setText("Iniciar Control");
+        socket = null;
+        salida = null;
     }
 
-    private void enviar(String mensaje) {
-        if (controlando && salida != null) salida.println(mensaje);
+    void enviar(String msg) {
+        if (controlando && salida != null) salida.println(msg);
     }
 
-    // ── Mouse ────────────────────────────────────────────────────
+    // ── Lector de /dev/input ──────────────────────────────────────
+    /**
+     * Estructura input_event Linux (24 bytes):
+     *   8 bytes timeval, 2 bytes type, 2 bytes code, 4 bytes value
+     */
+    void iniciarLecturaDispositivo(String ruta) {
+        Thread t = new Thread(() -> {
+            try (FileInputStream fis = new FileInputStream(ruta)) {
+                byte[] buf = new byte[24];
+                while (true) {
+                    int leidos = 0;
+                    while (leidos < 24) {
+                        int r = fis.read(buf, leidos, 24 - leidos);
+                        if (r < 0) return;
+                        leidos += r;
+                    }
+                    ByteBuffer bb = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN);
+                    bb.getLong(); // timeval — ignorar
+                    int type  = bb.getShort() & 0xFFFF;
+                    int code  = bb.getShort() & 0xFFFF;
+                    int value = bb.getInt();
 
-    @Override
-    public void nativeMouseMoved(NativeMouseEvent e) {
-        if (!controlando) return;
+                    procesarEvento(type, code, value);
+                }
+            } catch (Exception e) {
+                System.out.println("Error leyendo " + ruta + ": " + e.getMessage());
+            }
+        });
+        t.setDaemon(true);
+        t.start();
+    }
 
-        // Borde izquierdo = recuperar control en Arch
-        if (e.getX() <= 2) {
-            cerrarConexion();
-            return;
+    /**
+     * EV_REL=2 (movimiento relativo), EV_KEY=1 (teclas/botones)
+     * REL_X=0, REL_Y=1
+     * BTN_LEFT=272, BTN_RIGHT=273, BTN_MIDDLE=274
+     */
+    private void procesarEvento(int type, int code, int value) {
+        if (type == 2) { // EV_REL
+            if (code == 0) { // REL_X
+                mouseX = Math.max(0, Math.min(ANCHO_PANTALLA, mouseX + value));
+
+                // Borde derecho → activar control automáticamente
+                if (!controlando && mouseX >= BORDE_DERECHO) {
+                    SwingUtilities.invokeLater(this::alternarConexion);
+                }
+
+                if (controlando) enviar("A," + mouseX + "," + mouseY);
+
+            } else if (code == 1) { // REL_Y
+                mouseY = Math.max(0, Math.min(ALTO_PANTALLA, mouseY + value));
+                if (controlando) enviar("A," + mouseX + "," + mouseY);
+            }
+
+        } else if (type == 1) { // EV_KEY
+            if (code == 272) { // BTN_LEFT
+                enviar("C," + (value == 1 ? "PRESIONAR" : "LIBERAR") + ",1");
+            } else if (code == 273) { // BTN_RIGHT
+                enviar("C," + (value == 1 ? "PRESIONAR" : "LIBERAR") + ",3");
+            } else if (code == 274) { // BTN_MIDDLE
+                enviar("C," + (value == 1 ? "PRESIONAR" : "LIBERAR") + ",2");
+            } else if (value == 1 && code == 1 && controlando) {
+                // ESC → liberar control
+                cerrarConexion();
+            } else {
+                // Teclas de teclado
+                if (value == 1)      enviar("K,PRESIONAR," + code);
+                else if (value == 0) enviar("K,LIBERAR,"   + code);
+            }
         }
-        enviar("A," + e.getX() + "," + e.getY());
     }
-
-    @Override
-    public void nativeMouseDragged(NativeMouseEvent e) {
-        // Arrastrar también mueve el cursor en el servidor
-        if (!controlando) return;
-        enviar("A," + e.getX() + "," + e.getY());
-    }
-
-    @Override
-    public void nativeMousePressed(NativeMouseEvent e) {
-        int boton = nativeBtnToServidor(e.getButton());
-        if (boton != -1) enviar("C,PRESIONAR," + boton);
-    }
-
-    @Override
-    public void nativeMouseReleased(NativeMouseEvent e) {
-        int boton = nativeBtnToServidor(e.getButton());
-        if (boton != -1) enviar("C,LIBERAR," + boton);
-    }
-
-    @Override public void nativeMouseClicked(NativeMouseEvent e) {}
-
-    private int nativeBtnToServidor(int btn) {
-        if (btn == NativeMouseEvent.BUTTON1) return 1;
-        if (btn == NativeMouseEvent.BUTTON2) return 3; // botón derecho
-        return -1;
-    }
-
-    // ── Teclado ──────────────────────────────────────────────────
-
-    @Override
-    public void nativeKeyPressed(NativeKeyEvent e) {
-        // Tecla de escape global: LeftAlt + F12 libera el control
-        if (e.getKeyCode() == NativeKeyEvent.VC_F12
-                && (e.getModifiers() & NativeKeyEvent.ALT_MASK) != 0) {
-            cerrarConexion();
-            return;
-        }
-        if (!controlando) return;
-        enviar("K,PRESIONAR," + e.getKeyCode());
-    }
-
-    @Override
-    public void nativeKeyReleased(NativeKeyEvent e) {
-        if (!controlando) return;
-        enviar("K,LIBERAR," + e.getKeyCode());
-    }
-
-    @Override public void nativeKeyTyped(NativeKeyEvent e) {}
 
     // ── Main ─────────────────────────────────────────────────────
 
     public static void main(String[] args) {
-        try {
-            // Silenciar logs verbosos de jnativehook
-            java.util.logging.Logger hookLog =
-                java.util.logging.Logger.getLogger(GlobalScreen.class.getPackage().getName());
-            hookLog.setLevel(java.util.logging.Level.WARNING);
-            hookLog.setUseParentHandlers(false);
-
-            GlobalScreen.registerNativeHook();
-
-            VentanaCliente cliente = new VentanaCliente();
-            GlobalScreen.addNativeMouseListener(cliente);
-            GlobalScreen.addNativeMouseMotionListener(cliente);
-            GlobalScreen.addNativeKeyListener(cliente);   // ← teclado registrado
-
-            SwingUtilities.invokeLater(() -> cliente.setVisible(true));
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        VentanaCliente cliente = new VentanaCliente();
+        cliente.iniciarLecturaDispositivo(DEVICE_MOUSE);
+        SwingUtilities.invokeLater(() -> cliente.setVisible(true));
     }
 }
