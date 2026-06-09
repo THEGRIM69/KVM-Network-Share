@@ -93,7 +93,7 @@ public class VentanaClienteWindow extends JFrame
             return;
         }
         if (!controlando) return;
-        
+
         if (e.getX() <= 2) {
             cerrarConexion();
             return;
@@ -136,13 +136,8 @@ public class VentanaClienteWindow extends JFrame
 
     @Override
     public void nativeKeyPressed(NativeKeyEvent e) {
-        // ESC → liberar control
-        if (e.getKeyCode() == NativeKeyEvent.VC_ESCAPE && controlando) {
-            cerrarConexion();
-            return;
-        }
-        if (!controlando) return;
-        enviar("K,PRESIONAR," + e.getKeyCode());
+        System.out.println("Tecla detectada: " + e.getKeyCode());
+        // ... resto del código
     }
 
     @Override
