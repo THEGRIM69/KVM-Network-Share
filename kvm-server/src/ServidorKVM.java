@@ -31,36 +31,33 @@ public class ServidorKVM {
 
                     String[] p = linea.split(",");
 
-                    // ── Mouse absoluto: "A,X,Y" ───────────────────────
                     if (p[0].equals("A") && p.length == 3) {
                         int x = Integer.parseInt(p[1]);
                         int y = Integer.parseInt(p[2]);
                         robot.mouseMove(x, y);
                     }
 
-                    // ── Clics: "C,PRESIONAR|LIBERAR,BOTON" ───────────
                     else if (p[0].equals("C") && p.length == 3) {
                         int boton   = Integer.parseInt(p[2]);
                         int mascara = (boton == 1)
                                 ? InputEvent.BUTTON1_DOWN_MASK
                                 : InputEvent.BUTTON3_DOWN_MASK;
-
                         if (p[1].equals("PRESIONAR")) robot.mousePress(mascara);
                         else if (p[1].equals("LIBERAR")) robot.mouseRelease(mascara);
                     }
 
-                    // ── Teclado: "K,PRESIONAR|LIBERAR,KEYCODE" ────────
                     else if (p[0].equals("K") && p.length == 3) {
                         int rawCode = Integer.parseInt(p[2]);
                         int keyCode = convertirKeyCode(rawCode);
-                        System.out.println("Keycode recibido: " + rawCode + " → " + keyCode);
                         if (keyCode != -1) {
                             try {
                                 if (p[1].equals("PRESIONAR")) robot.keyPress(keyCode);
                                 else if (p[1].equals("LIBERAR")) robot.keyRelease(keyCode);
                             } catch (IllegalArgumentException ex) {
-                                System.out.println("Keycode no ejecutable: " + keyCode);
+                                System.out.println("Keycode no ejecutable: " + rawCode + " → " + keyCode);
                             }
+                        } else {
+                            System.out.println("Keycode sin mapear: " + rawCode);
                         }
                     }
                 }
@@ -75,11 +72,6 @@ public class ServidorKVM {
         }
     }
 
-    /**
-     * Convierte scancodes de jnativehook en Windows
-     * a keycodes de java.awt.event.KeyEvent para Robot.
-     * Los scancodes de Windows son los mismos que los de Linux /dev/input.
-     */
     private static int convertirKeyCode(int code) {
         return switch (code) {
             // Letras
@@ -109,7 +101,7 @@ public class ServidorKVM {
             case 45 -> KeyEvent.VK_X;
             case 21 -> KeyEvent.VK_Y;
             case 44 -> KeyEvent.VK_Z;
-            // Números fila superior
+            // Números
             case 11 -> KeyEvent.VK_0;
             case 2  -> KeyEvent.VK_1;
             case 3  -> KeyEvent.VK_2;
@@ -135,30 +127,18 @@ public class ServidorKVM {
             case 56   -> KeyEvent.VK_ALT;
             case 3640 -> KeyEvent.VK_ALT;
             case 3675 -> KeyEvent.VK_WINDOWS;
-            // Puntuación
-            case 12   -> KeyEvent.VK_MINUS;
-            case 13   -> KeyEvent.VK_EQUALS;
-            case 26   -> KeyEvent.VK_OPEN_BRACKET;
-            case 27   -> KeyEvent.VK_CLOSE_BRACKET;
-            case 39   -> KeyEvent.VK_SEMICOLON;
-            case 40   -> KeyEvent.VK_QUOTE;
-            case 41   -> KeyEvent.VK_BACK_QUOTE;
-            case 43   -> KeyEvent.VK_BACK_SLASH;
-            case 51   -> KeyEvent.VK_COMMA;
-            case 52   -> KeyEvent.VK_PERIOD;
-            case 53   -> KeyEvent.VK_SLASH;
-            // Flechas
-            case 57419 -> KeyEvent.VK_LEFT;
-            case 57416 -> KeyEvent.VK_UP;
-            case 57421 -> KeyEvent.VK_RIGHT;
-            case 57424 -> KeyEvent.VK_DOWN;
-            // Navegación
-            case 57415 -> KeyEvent.VK_HOME;
-            case 57423 -> KeyEvent.VK_END;
-            case 57417 -> KeyEvent.VK_PAGE_UP;
-            case 57425 -> KeyEvent.VK_PAGE_DOWN;
-            case 57426 -> KeyEvent.VK_INSERT;
-            case 57427 -> KeyEvent.VK_DELETE;
+            // Puntuación — usando scancodes originales del cliente
+            case 12  -> KeyEvent.VK_MINUS;
+            case 13  -> KeyEvent.VK_EQUALS;
+            case 26  -> KeyEvent.VK_OPEN_BRACKET;
+            case 27  -> KeyEvent.VK_CLOSE_BRACKET;
+            case 39  -> KeyEvent.VK_SEMICOLON;
+            case 40  -> KeyEvent.VK_QUOTE;
+            case 41  -> KeyEvent.VK_BACK_QUOTE;
+            case 43  -> KeyEvent.VK_BACK_SLASH;
+            case 51  -> KeyEvent.VK_COMMA;
+            case 52  -> KeyEvent.VK_PERIOD;
+            case 53  -> KeyEvent.VK_SLASH;
             // F1-F12
             case 59 -> KeyEvent.VK_F1;
             case 60 -> KeyEvent.VK_F2;
@@ -172,7 +152,19 @@ public class ServidorKVM {
             case 68 -> KeyEvent.VK_F10;
             case 87 -> KeyEvent.VK_F11;
             case 88 -> KeyEvent.VK_F12;
-            // Numpad
+            // Flechas
+            case 57419 -> KeyEvent.VK_LEFT;
+            case 57416 -> KeyEvent.VK_UP;
+            case 57421 -> KeyEvent.VK_RIGHT;
+            case 57424 -> KeyEvent.VK_DOWN;
+            // Navegación
+            case 57415 -> KeyEvent.VK_HOME;
+            case 57423 -> KeyEvent.VK_END;
+            case 57417 -> KeyEvent.VK_PAGE_UP;
+            case 57425 -> KeyEvent.VK_PAGE_DOWN;
+            case 57426 -> KeyEvent.VK_INSERT;
+            case 57427 -> KeyEvent.VK_DELETE;
+            // Enter numpad
             case 3667 -> KeyEvent.VK_ENTER;
             default   -> -1;
         };
