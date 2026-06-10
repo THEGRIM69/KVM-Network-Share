@@ -6,6 +6,8 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseInputListener;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.logging.Level;
@@ -16,15 +18,23 @@ public class VentanaClienteWindow extends JFrame
 
     private static final int PUERTO         = 8080;
     private static final int ANCHO_PANTALLA = 1366;
+    private static final int ALTO_PANTALLA  = 768;
     private static final int BORDE_DERECHO  = ANCHO_PANTALLA - 2;
+    private static final int CENTRO_X       = ANCHO_PANTALLA / 2;
+    private static final int CENTRO_Y       = ALTO_PANTALLA  / 2;
 
     private JTextField txtIp;
     private JButton    btnConectar;
     private JLabel     lblEstado;
 
-    private Socket      socket;
-    private PrintWriter salida;
+    private Socket         socket;
+    private PrintWriter    salida;
+    private BufferedReader entrada;
     private volatile boolean controlando = false;
+    private volatile boolean conectando  = false;
+    private volatile boolean anclando    = false; // evita loop de robotLocal
+
+    private Robot robotLocal;
 
     public VentanaClienteWindow() {
         setTitle("KVM Cliente - Windows");
@@ -35,7 +45,7 @@ public class VentanaClienteWindow extends JFrame
 
         txtIp       = new JTextField("192.168.1.114", 13);
         btnConectar = new JButton("Iniciar Control");
-        lblEstado   = new JLabel("Estado: Desconectado 🔴");
+        lblEstado   = new JLabel("Estado: Desconectado [OFF]");
 
         add(new JLabel("IP Servidor:"));
         add(txtIp);
@@ -43,38 +53,65 @@ public class VentanaClienteWindow extends JFrame
         add(lblEstado);
 
         btnConectar.addActionListener(e -> alternarConexion());
-    }
 
-    // ── Conexión ─────────────────────────────────────────────────
+        try { robotLocal = new Robot(); } catch (AWTException ignored) {}
+    }
 
     private void alternarConexion() {
         if (!controlando) {
             try {
                 socket      = new Socket(txtIp.getText().trim(), PUERTO);
                 salida      = new PrintWriter(socket.getOutputStream(), true);
+                entrada     = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 controlando = true;
-                lblEstado.setText("Estado: Controlando 🟢");
+                lblEstado.setText("Estado: Controlando [ON]");
                 btnConectar.setText("Detener");
+
+                // Anclar mouse al centro al conectar
+                if (robotLocal != null) robotLocal.mouseMove(CENTRO_X, CENTRO_Y);
+
+                Thread receptor = new Thread(this::escucharServidor);
+                receptor.setDaemon(true);
+                receptor.start();
+
             } catch (Exception ex) {
-                lblEstado.setText("Error de conexión 🔴");
+                lblEstado.setText("Error de conexion");
+                conectando = false;
             }
         } else {
             cerrarConexion();
         }
     }
 
+    private void escucharServidor() {
+        try {
+            String linea;
+            while ((linea = entrada.readLine()) != null) {
+                if (linea.equals("REGRESAR")) {
+                    System.out.println("Servidor pide regresar control");
+                    cerrarConexion();
+                    // Mover mouse cerca del borde derecho para poder volver a pasar
+                    if (robotLocal != null)
+                        robotLocal.mouseMove(BORDE_DERECHO - 50, CENTRO_Y);
+                    break;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void cerrarConexion() {
         controlando = false;
         SwingUtilities.invokeLater(() -> {
-            lblEstado.setText("Estado: Desconectado 🔴");
+            lblEstado.setText("Estado: Desconectado [OFF]");
             btnConectar.setText("Iniciar Control");
         });
         try {
             if (salida != null) salida.println("LIBERAR");
             if (socket != null) socket.close();
         } catch (Exception ignored) {}
-        socket = null;
-        salida = null;
+        socket  = null;
+        salida  = null;
+        entrada = null;
     }
 
     private void enviar(String msg) {
@@ -83,43 +120,59 @@ public class VentanaClienteWindow extends JFrame
 
     // ── Mouse ────────────────────────────────────────────────────
 
-    private int ultimoX = 0, ultimoY = 0;
+
 
     @Override
     public void nativeMouseMoved(NativeMouseEvent e) {
+        // Ignorar eventos generados por robotLocal
+        if (anclando) return;
 
-        if (!controlando && e.getX() >= BORDE_DERECHO) {
-            SwingUtilities.invokeLater(this::alternarConexion);
+        if (controlando) {
+            int deltaX = e.getX() - CENTRO_X;
+            int deltaY = e.getY() - CENTRO_Y;
+
+            // Anclar mouse al centro
+            anclando = true;
+            if (robotLocal != null) robotLocal.mouseMove(CENTRO_X, CENTRO_Y);
+            anclando = false;
+
+            if (deltaX != 0 || deltaY != 0)
+                enviar("D," + deltaX + "," + deltaY);
             return;
         }
-        if (!controlando) return;
 
-        if (e.getX() <= 2) {
-            cerrarConexion();
-            return;
-        }
-        // Solo enviar si se movió más de 2 píxeles
-        if (Math.abs(e.getX() - ultimoX) > 2 || Math.abs(e.getY() - ultimoY) > 2) {
-            ultimoX = e.getX();
-            ultimoY = e.getY();
-            enviar("A," + e.getX() + "," + e.getY());
+        // Borde derecho → conectar automáticamente
+        if (!conectando && e.getX() >= BORDE_DERECHO) {
+            conectando = true;
+            SwingUtilities.invokeLater(() -> {
+                alternarConexion();
+                conectando = false;
+            });
         }
     }
 
     @Override
     public void nativeMouseDragged(NativeMouseEvent e) {
         if (!controlando) return;
-        enviar("A," + e.getX() + "," + e.getY());
+        int deltaX = e.getX() - CENTRO_X;
+        int deltaY = e.getY() - CENTRO_Y;
+        anclando = true;
+        if (robotLocal != null) robotLocal.mouseMove(CENTRO_X, CENTRO_Y);
+        anclando = false;
+        if (deltaX != 0 || deltaY != 0)
+            enviar("D," + deltaX + "," + deltaY);
     }
 
     @Override
     public void nativeMousePressed(NativeMouseEvent e) {
+        if (!controlando) return; // Solo enviar si está controlando
         int boton = nativeBtnToServidor(e.getButton());
         if (boton != -1) enviar("C,PRESIONAR," + boton);
     }
 
     @Override
     public void nativeMouseReleased(NativeMouseEvent e) {
+        if (!controlando) return; // Solo enviar si está controlando
         int boton = nativeBtnToServidor(e.getButton());
         if (boton != -1) enviar("C,LIBERAR," + boton);
     }
@@ -136,8 +189,12 @@ public class VentanaClienteWindow extends JFrame
 
     @Override
     public void nativeKeyPressed(NativeKeyEvent e) {
-        System.out.println("Tecla detectada: " + e.getKeyCode());
-        // ... resto del código
+        if (e.getKeyCode() == NativeKeyEvent.VC_ESCAPE && controlando) {
+            cerrarConexion();
+            return;
+        }
+        if (!controlando) return;
+        enviar("K,PRESIONAR," + e.getKeyCode());
     }
 
     @Override
@@ -152,7 +209,6 @@ public class VentanaClienteWindow extends JFrame
 
     public static void main(String[] args) {
         try {
-            // Silenciar logs de jnativehook
             Logger log = Logger.getLogger(GlobalScreen.class.getPackage().getName());
             log.setLevel(Level.WARNING);
             log.setUseParentHandlers(false);
