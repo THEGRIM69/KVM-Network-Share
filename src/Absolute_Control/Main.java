@@ -47,7 +47,7 @@ public class Main extends JFrame {
     private JTextArea  logArea;
 
     public Main() {
-        setTitle("Absolute_Control");
+        setTitle("Absolute Control");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(480, 480);
         setLocationRelativeTo(null);
