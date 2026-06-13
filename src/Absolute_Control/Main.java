@@ -47,7 +47,7 @@ public class Main extends JFrame {
     private JTextArea  logArea;
 
     public Main() {
-        setTitle("AbsolutControll");
+        setTitle("Absolute_Control");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(480, 480);
         setLocationRelativeTo(null);
@@ -68,7 +68,7 @@ public class Main extends JFrame {
         p.setBackground(PANEL_BG);
         p.setBorder(new MatteBorder(0, 0, 1, 0, BORDER));
 
-        JLabel title = new JLabel("  ⬡  AbsolutControll");
+        JLabel title = new JLabel("  ⬡  Absolute_Control");
         title.setFont(new Font("Segoe UI", Font.BOLD, 16));
         title.setForeground(ACCENT);
         title.setBorder(new EmptyBorder(12, 14, 12, 0));
